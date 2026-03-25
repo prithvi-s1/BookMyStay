@@ -1,9 +1,7 @@
 # BookMyStay
-1) create abstract class 'Room'
-2) add common attributes
-3) add display function
-4) create sub classes 'singleRoom', 'doubleRoom', 'suiteRoom'
-5) constructor in each one
-6) create main class
-7) create objects of each subclass
-8) call the display function
+1) create class RoomInventory
+2) add variables roomType, Roomcount
+3) Create a map roomAvailability <String, Integer>
+4) initialise single, double and suite rooms with default values in the map
+5) add getRoomAvailability() function 
+6) add updateRoomAvailability() function 
