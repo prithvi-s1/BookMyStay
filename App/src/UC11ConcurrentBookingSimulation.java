@@ -304,37 +304,90 @@ class CancellationService {
 }
 
 /**
- * Main Class: UseCase10BookingCancellation
- * Demonstrates state reversal and inventory consistency.
+ * Runnable task that processes bookings from a shared queue.
+ * Implements synchronization to prevent race conditions.
  */
-public class UC10BookingCancellation {
+class ConcurrentBookingProcessor implements Runnable {
+    private final BookingRequestQueue bookingQueue;
+    private final Map<String, Integer> inventory;
+    private final RoomAllocationService allocationService;
+
+    public ConcurrentBookingProcessor(
+            BookingRequestQueue bookingQueue,
+            Map<String, Integer> inventory,
+            RoomAllocationService allocationService) {
+        this.bookingQueue = bookingQueue;
+        this.inventory = inventory;
+        this.allocationService = allocationService;
+    }
+
+    @Override
+    public void run() {
+        while (true) {
+            Reservation reservation = null;
+
+            // 1. Critical Section: Synchronized polling from the shared queue
+            synchronized (bookingQueue) {
+                if (bookingQueue.hasPendingRequests()) {
+                    reservation = bookingQueue.getNextRequest();
+                } else {
+                    break; // Exit loop if no more requests
+                }
+            }
+
+            // 2. Critical Section: Synchronized Room Allocation
+            // This prevents "Double Booking" if two threads check inventory simultaneously.
+            if (reservation != null) {
+                synchronized (inventory) {
+                    allocationService.allocateRoom(reservation, inventory);
+                }
+            }
+
+            // Artificial delay to simulate processing time and increase chance of interleaving
+            try { Thread.sleep(100); } catch (InterruptedException e) { break; }
+        }
+    }
+}
+
+/**
+ * Main Class: UseCase11ConcurrentBookingSimulation
+ * Demonstrates thread-safe processing using multiple threads.
+ */
+public class UC11ConcurrentBookingSimulation {
     public static void main(String[] args) {
-        System.out.println("Hotel Booking Cancellation & Rollback");
-        System.out.println("-------------------------------------");
+        System.out.println("--- Concurrent Booking Simulation (Thread Safety) ---");
 
-        // 1. Setup Environment
-        Map<String, Integer> inventory = new HashMap<>();
-        inventory.put("Single", 0); // Assume these were already booked
-        inventory.put("Suite", 2);
+        // Shared Resources
+        BookingRequestQueue sharedQueue = new BookingRequestQueue();
+        Map<String, Integer> sharedInventory = new HashMap<>();
+        sharedInventory.put("Suite", 2); // Only 2 suites available
 
-        CancellationService cancelService = new CancellationService();
+        RoomAllocationService allocationService = new RoomAllocationService();
 
-        // 2. Pre-register some "Confirmed" bookings
-        cancelService.registerBooking("SNG-101", "Single");
-        cancelService.registerBooking("SNG-102", "Single");
-        cancelService.registerBooking("SUI-501", "Suite");
+        // Load the queue with multiple requests for the same limited resource
+        sharedQueue.addRequest(new Reservation("Thread-User-1", "Suite"));
+        sharedQueue.addRequest(new Reservation("Thread-User-2", "Suite"));
+        sharedQueue.addRequest(new Reservation("Thread-User-3", "Suite")); // Should be rejected
+        sharedQueue.addRequest(new Reservation("Thread-User-4", "Suite")); // Should be rejected
 
-        System.out.println("Initial Inventory: " + inventory);
+        // Create multiple worker threads (Simulating concurrent processors)
+        Thread t1 = new Thread(new ConcurrentBookingProcessor(sharedQueue, sharedInventory, allocationService), "Processor-1");
+        Thread t2 = new Thread(new ConcurrentBookingProcessor(sharedQueue, sharedInventory, allocationService), "Processor-2");
 
-        // 3. Perform Cancellations
-        cancelService.cancelBooking("SNG-102", inventory);
-        cancelService.cancelBooking("SUI-501", inventory);
+        System.out.println("Starting concurrent processors...");
+        t1.start();
+        t2.start();
 
-        // 4. Attempt to cancel a non-existent ID (Validation check)
-        cancelService.cancelBooking("NON-999", inventory);
+        try {
+            // Wait for both threads to finish
+            t1.join();
+            t2.join();
+        } catch (InterruptedException e) {
+            System.out.println("Main thread interrupted.");
+        }
 
-        // 5. Review System State
-        cancelService.showRollbackHistory();
-        System.out.println("Final Inventory after Rollback: " + inventory);
+        System.out.println("-----------------------------------------------------");
+        System.out.println("Final Inventory State: " + sharedInventory);
+        System.out.println("Simulation complete. All critical sections protected.");
     }
 }
