@@ -149,39 +149,80 @@ class AddOnServiceManager {
 }
 
 /**
- * Main Class: UseCase7AddOnServiceSelection
- * Demonstrates business extensibility and cost aggregation.
+ * Acts as an in-memory audit log for all confirmed bookings.
+ * Preserves the chronological order of transactions.
  */
-public class UC7AddOnServiceSelection {
+class BookingHistory {
+    private List<Reservation> confirmedReservations;
+
+    public BookingHistory() {
+        this.confirmedReservations = new ArrayList<>();
+    }
+
+    /**
+     * Appends a confirmed reservation to the history.
+     */
+    public void addReservation(Reservation reservation) {
+        confirmedReservations.add(reservation);
+    }
+
+    /**
+     * Returns a read-only view or a copy to maintain encapsulation.
+     */
+    public List<Reservation> getConfirmedReservations() {
+        return Collections.unmodifiableList(confirmedReservations);
+    }
+}
+
+/**
+ * Separates the logic of data analysis from the data storage itself.
+ */
+class BookingReportService {
+    /**
+     * Generates a structured summary of the booking history for Administrators.
+     */
+    public void generateReport(BookingHistory history) {
+        List<Reservation> records = history.getConfirmedReservations();
+
+        System.out.println("\n--- ADMINISTRATIVE BOOKING REPORT ---");
+        System.out.println("Total Bookings Confirmed: " + records.size());
+        System.out.println("-------------------------------------");
+        System.out.printf("%-5s | %-15s | %-10s%n", "No.", "Guest Name", "Room Type");
+        System.out.println("-------------------------------------");
+
+        int count = 1;
+        for (Reservation res : records) {
+            System.out.printf("%-5d | %-15s | %-10s%n",
+                    count++, res.getGuestName(), res.getRoomType());
+        }
+        System.out.println("-------------------------------------\n");
+    }
+}
+
+/**
+ * Main Class: UseCase8BookingHistoryReport
+ * Demonstrates the transition from active processing to historical auditing.
+ */
+public class UC8BookingHistoryReport {
     public static void main(String[] args) {
-        System.out.println("Hotel Add-On Service Selection");
-        System.out.println("------------------------------");
+        // 1. Initialize our Infrastructure
+        BookingHistory history = new BookingHistory();
+        BookingReportService reportService = new BookingReportService();
 
-        // 1. Setup the Manager
-        AddOnServiceManager serviceManager = new AddOnServiceManager();
+        // 2. Simulate the Booking & Confirmation Flow
+        // (In a real app, these come from the Queue and Allocation Service)
+        Reservation res1 = new Reservation("Abhi", "Single");
+        Reservation res2 = new Reservation("Subha", "Double");
+        Reservation res3 = new Reservation("Vanmathu", "Suite");
 
-        // 2. Define Available Services
-        AddOnService wifi = new AddOnService("Premium WiFi", 15.0);
-        AddOnService breakfast = new AddOnService("Buffet Breakfast", 25.0);
-        AddOnService spa = new AddOnService("Spa Treatment", 80.0);
+        // 3. Persist successful transactions
+        history.addReservation(res1);
+        history.addReservation(res2);
+        history.addReservation(res3);
 
-        // 3. Simulate Guest Selections for specific Reservation IDs
-        String resId1 = "SNG-101"; // From Use Case 6
-        String resId2 = "DBL-102";
+        System.out.println("System: Transactions successfully persisted to History.");
 
-        // Guest 1 selects WiFi and Breakfast
-        serviceManager.addService(resId1, wifi);
-        serviceManager.addService(resId1, breakfast);
-
-        // Guest 2 selects Spa and Breakfast
-        serviceManager.addService(resId2, spa);
-        serviceManager.addService(resId2, breakfast);
-
-        // 4. Output Calculations
-        System.out.println("------------------------------");
-        System.out.println("Total Add-On Cost for " + resId1 + ": $" + serviceManager.calculateTotalServiceCost(resId1));
-        System.out.println("Total Add-On Cost for " + resId2 + ": $" + serviceManager.calculateTotalServiceCost(resId2));
-
-        System.out.println("\nCore booking logic remains untouched. State integrity maintained.");
+        // 4. Admin requests the report
+        reportService.generateReport(history);
     }
 }
