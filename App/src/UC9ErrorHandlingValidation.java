@@ -200,29 +200,84 @@ class BookingReportService {
 }
 
 /**
- * Main Class: UseCase8BookingHistoryReport
- * Demonstrates the transition from active processing to historical auditing.
+ * Custom Exception for domain-specific booking failures.
  */
-public class UC8BookingHistoryReport {
+class InvalidBookingException extends Exception {
+    public InvalidBookingException(String message) {
+        super(message);
+    }
+}
+
+/**
+ * Logic to ensure system constraints are met before any state change occurs.
+ */
+class ReservationValidator {
+    /**
+     * Validates input and system state.
+     * Checks for empty names, unsupported room types, and zero inventory.
+     */
+    public void validate(String guestName, String roomType, Map<String, Integer> inventory)
+            throws InvalidBookingException {
+
+        // 1. Basic Input Validation
+        if (guestName == null || guestName.trim().isEmpty()) {
+            throw new InvalidBookingException("Guest name cannot be empty.");
+        }
+
+        // 2. Room Type Validation
+        if (!inventory.containsKey(roomType)) {
+            throw new InvalidBookingException("Room type '" + roomType + "' is not supported by this hotel.");
+        }
+
+        // 3. Inventory Constraint Validation
+        if (inventory.get(roomType) <= 0) {
+            throw new InvalidBookingException("No availability for " + roomType + " rooms.");
+        }
+
+        System.out.println("Validation Successful for: " + guestName);
+    }
+}
+
+/**
+ * Main Class: UseCase9ErrorHandlingValidation
+ * Demonstrates robust handling of invalid scenarios.
+ */
+public class UC9ErrorHandlingValidation {
     public static void main(String[] args) {
-        // 1. Initialize our Infrastructure
-        BookingHistory history = new BookingHistory();
-        BookingReportService reportService = new BookingReportService();
+        System.out.println("--- Hotel Booking Validation System ---");
 
-        // 2. Simulate the Booking & Confirmation Flow
-        // (In a real app, these come from the Queue and Allocation Service)
-        Reservation res1 = new Reservation("Abhi", "Single");
-        Reservation res2 = new Reservation("Subha", "Double");
-        Reservation res3 = new Reservation("Vanmathu", "Suite");
+        // Setup Components
+        Map<String, Integer> inventory = new HashMap<>();
+        inventory.put("Single", 1);
+        inventory.put("Double", 0); // Sold out for testing
 
-        // 3. Persist successful transactions
-        history.addReservation(res1);
-        history.addReservation(res2);
-        history.addReservation(res3);
+        ReservationValidator validator = new ReservationValidator();
+        Scanner scanner = new Scanner(System.in);
 
-        System.out.println("System: Transactions successfully persisted to History.");
+        try {
+            // Simulation 1: Empty Name
+            System.out.print("Enter Guest Name: ");
+            String name = scanner.nextLine();
 
-        // 4. Admin requests the report
-        reportService.generateReport(history);
+            System.out.print("Enter Room Type (Single/Double/Suite): ");
+            String type = scanner.nextLine();
+
+            // Perform Validation (Fail-Fast)
+            validator.validate(name, type, inventory);
+
+            // If we reach here, validation passed
+            System.out.println("Proceeding to create Reservation for " + name);
+
+        } catch (InvalidBookingException e) {
+            // Handle domain-specific validation errors gracefully
+            System.err.println("Booking Refused: " + e.getMessage());
+        } catch (Exception e) {
+            // Catch-all for unexpected system errors
+            System.err.println("A system error occurred: " + e.getMessage());
+        } finally {
+            scanner.close();
+            System.out.println("---------------------------------------");
+            System.out.println("System stable. Resources released.");
+        }
     }
 }
