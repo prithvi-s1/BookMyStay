@@ -237,47 +237,104 @@ class ReservationValidator {
         System.out.println("Validation Successful for: " + guestName);
     }
 }
+/**
+ * Service to handle the safe reversal of confirmed bookings.
+ * Uses a Stack to track the chronological order of released resources.
+ */
+class CancellationService {
+    // LIFO structure to track released room IDs
+    private Stack<String> releasedRoomIds;
+    // Internal registry to map IDs back to their categories for inventory restoration
+    private Map<String, String> reservationRoomTypeMap;
+
+    public CancellationService() {
+        this.releasedRoomIds = new Stack<>();
+        this.reservationRoomTypeMap = new HashMap<>();
+    }
+
+    /**
+     * Registers a confirmed booking so the system knows how to undo it later.
+     */
+    public void registerBooking(String reservationId, String roomType) {
+        reservationRoomTypeMap.put(reservationId, roomType);
+    }
+
+    /**
+     * Validates and executes a cancellation, restoring inventory counts.
+     */
+    public void cancelBooking(String reservationId, Map<String, Integer> inventory) {
+        // 1. Validation: Ensure the reservation exists
+        if (!reservationRoomTypeMap.containsKey(reservationId)) {
+            System.out.println("CANCELLATION FAILED: Reservation ID " + reservationId + " not found.");
+            return;
+        }
+
+        // 2. Identify the room type to restore
+        String roomType = reservationRoomTypeMap.get(reservationId);
+
+        // 3. Rollback Logic (LIFO)
+        releasedRoomIds.push(reservationId);
+
+        // 4. Update Inventory
+        inventory.put(roomType, inventory.get(roomType) + 1);
+
+        // 5. Cleanup Registry
+        reservationRoomTypeMap.remove(reservationId);
+
+        System.out.println("SUCCESS: Cancelled " + reservationId + ". " + roomType + " inventory incremented.");
+    }
+
+    /**
+     * Visualizes the order of rollbacks (Last Cancelled is Top of Stack).
+     */
+    public void showRollbackHistory() {
+        System.out.println("\n--- ROLLBACK HISTORY (LIFO) ---");
+        if (releasedRoomIds.isEmpty()) {
+            System.out.println("No cancellations recorded.");
+        } else {
+            // Using a temporary stack or list to show order without destroying the stack
+            List<String> history = new ArrayList<>(releasedRoomIds);
+            Collections.reverse(history);
+            for (String id : history) {
+                System.out.println("Released: " + id);
+            }
+        }
+        System.out.println("-------------------------------\n");
+    }
+}
 
 /**
- * Main Class: UseCase9ErrorHandlingValidation
- * Demonstrates robust handling of invalid scenarios.
+ * Main Class: UseCase10BookingCancellation
+ * Demonstrates state reversal and inventory consistency.
  */
-public class UC9ErrorHandlingValidation {
+public class UC10BookingCancellation {
     public static void main(String[] args) {
-        System.out.println("--- Hotel Booking Validation System ---");
+        System.out.println("Hotel Booking Cancellation & Rollback");
+        System.out.println("-------------------------------------");
 
-        // Setup Components
+        // 1. Setup Environment
         Map<String, Integer> inventory = new HashMap<>();
-        inventory.put("Single", 1);
-        inventory.put("Double", 0); // Sold out for testing
+        inventory.put("Single", 0); // Assume these were already booked
+        inventory.put("Suite", 2);
 
-        ReservationValidator validator = new ReservationValidator();
-        Scanner scanner = new Scanner(System.in);
+        CancellationService cancelService = new CancellationService();
 
-        try {
-            // Simulation 1: Empty Name
-            System.out.print("Enter Guest Name: ");
-            String name = scanner.nextLine();
+        // 2. Pre-register some "Confirmed" bookings
+        cancelService.registerBooking("SNG-101", "Single");
+        cancelService.registerBooking("SNG-102", "Single");
+        cancelService.registerBooking("SUI-501", "Suite");
 
-            System.out.print("Enter Room Type (Single/Double/Suite): ");
-            String type = scanner.nextLine();
+        System.out.println("Initial Inventory: " + inventory);
 
-            // Perform Validation (Fail-Fast)
-            validator.validate(name, type, inventory);
+        // 3. Perform Cancellations
+        cancelService.cancelBooking("SNG-102", inventory);
+        cancelService.cancelBooking("SUI-501", inventory);
 
-            // If we reach here, validation passed
-            System.out.println("Proceeding to create Reservation for " + name);
+        // 4. Attempt to cancel a non-existent ID (Validation check)
+        cancelService.cancelBooking("NON-999", inventory);
 
-        } catch (InvalidBookingException e) {
-            // Handle domain-specific validation errors gracefully
-            System.err.println("Booking Refused: " + e.getMessage());
-        } catch (Exception e) {
-            // Catch-all for unexpected system errors
-            System.err.println("A system error occurred: " + e.getMessage());
-        } finally {
-            scanner.close();
-            System.out.println("---------------------------------------");
-            System.out.println("System stable. Resources released.");
-        }
+        // 5. Review System State
+        cancelService.showRollbackHistory();
+        System.out.println("Final Inventory after Rollback: " + inventory);
     }
 }
