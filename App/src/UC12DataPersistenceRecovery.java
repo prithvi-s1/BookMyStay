@@ -1,4 +1,5 @@
 import java.util.*;
+import java.io.*;
 /**
  * @author Prithvi Soans
  * @version 5.0
@@ -350,44 +351,84 @@ class ConcurrentBookingProcessor implements Runnable {
 }
 
 /**
- * Main Class: UseCase11ConcurrentBookingSimulation
- * Demonstrates thread-safe processing using multiple threads.
+ * Service to handle the translation between in-memory Objects and Disk Storage.
+ * Implements simple text-based serialization for transparency.
  */
-public class UC11ConcurrentBookingSimulation {
-    public static void main(String[] args) {
-        System.out.println("--- Concurrent Booking Simulation (Thread Safety) ---");
+class FilePersistenceService {
 
-        // Shared Resources
-        BookingRequestQueue sharedQueue = new BookingRequestQueue();
-        Map<String, Integer> sharedInventory = new HashMap<>();
-        sharedInventory.put("Suite", 2); // Only 2 suites available
+    /**
+     * Serializes room inventory state to a file.
+     * Format: roomType:availableCount
+     */
+    public void saveInventory(Map<String, Integer> inventory, String filePath) {
+        try (PrintWriter writer = new PrintWriter(new FileWriter(filePath))) {
+            for (Map.Entry<String, Integer> entry : inventory.entrySet()) {
+                writer.println(entry.getKey() + ":" + entry.getValue());
+            }
+            System.out.println("System: Inventory snapshot saved to " + filePath);
+        } catch (IOException e) {
+            System.err.println("Error saving inventory: " + e.getMessage());
+        }
+    }
 
-        RoomAllocationService allocationService = new RoomAllocationService();
-
-        // Load the queue with multiple requests for the same limited resource
-        sharedQueue.addRequest(new Reservation("Thread-User-1", "Suite"));
-        sharedQueue.addRequest(new Reservation("Thread-User-2", "Suite"));
-        sharedQueue.addRequest(new Reservation("Thread-User-3", "Suite")); // Should be rejected
-        sharedQueue.addRequest(new Reservation("Thread-User-4", "Suite")); // Should be rejected
-
-        // Create multiple worker threads (Simulating concurrent processors)
-        Thread t1 = new Thread(new ConcurrentBookingProcessor(sharedQueue, sharedInventory, allocationService), "Processor-1");
-        Thread t2 = new Thread(new ConcurrentBookingProcessor(sharedQueue, sharedInventory, allocationService), "Processor-2");
-
-        System.out.println("Starting concurrent processors...");
-        t1.start();
-        t2.start();
-
-        try {
-            // Wait for both threads to finish
-            t1.join();
-            t2.join();
-        } catch (InterruptedException e) {
-            System.out.println("Main thread interrupted.");
+    /**
+     * Deserializes room inventory from a file back into the application state.
+     */
+    public void loadInventory(Map<String, Integer> inventory, String filePath) {
+        File file = new File(filePath);
+        if (!file.exists()) {
+            System.out.println("System: No persistence file found. Starting with default state.");
+            return;
         }
 
-        System.out.println("-----------------------------------------------------");
-        System.out.println("Final Inventory State: " + sharedInventory);
-        System.out.println("Simulation complete. All critical sections protected.");
+        try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+            String line;
+            inventory.clear(); // Clear current memory to reflect the "Last Known State"
+            while ((line = reader.readLine()) != null) {
+                String[] parts = line.split(":");
+                if (parts.length == 2) {
+                    inventory.put(parts[0], Integer.parseInt(parts[1]));
+                }
+            }
+            System.out.println("System: State recovered successfully from " + filePath);
+        } catch (IOException | NumberFormatException e) {
+            System.err.println("Error loading inventory: " + e.getMessage() + ". Starting fresh.");
+        }
+    }
+}
+
+/**
+ * Main Class: UseCase12DataPersistenceRecovery
+ * Demonstrates the full lifecycle: Operations -> Save -> Restart -> Recover.
+ */
+public class UC12DataPersistenceRecovery {
+    public static void main(String[] args) {
+        String storagePath = "hotel_state.txt";
+        FilePersistenceService persistence = new FilePersistenceService();
+        Map<String, Integer> currentInventory = new HashMap<>();
+
+        // --- PHASE 1: SYSTEM RECOVERY (Startup) ---
+        System.out.println("--- Booting Hotel Management System ---");
+        persistence.loadInventory(currentInventory, storagePath);
+
+        // If loading failed/empty, initialize defaults
+        if (currentInventory.isEmpty()) {
+            currentInventory.put("Single", 5);
+            currentInventory.put("Suite", 2);
+        }
+        System.out.println("Current Available Rooms: " + currentInventory);
+
+        // --- PHASE 2: BUSINESS OPERATIONS ---
+        System.out.println("\nProcessing a new booking...");
+        if (currentInventory.get("Single") > 0) {
+            currentInventory.put("Single", currentInventory.get("Single") - 1);
+            System.out.println("Booking confirmed. Remaining Singles: " + currentInventory.get("Single"));
+        }
+
+        // --- PHASE 3: STATE PERSISTENCE (Shutdown) ---
+        System.out.println("\n--- Shutting Down System ---");
+        persistence.saveInventory(currentInventory, storagePath);
+
+        System.out.println("Process finished. Restart the program to see data persist!");
     }
 }
